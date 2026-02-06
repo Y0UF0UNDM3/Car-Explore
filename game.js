@@ -1,108 +1,141 @@
-// ---- game.js ----
-
-// Import necessary THREE loaders at top of your HTML:
-// <script src="https://cdn.jsdelivr.net/npm/three@0.148.0/build/three.min.js"></script>
-// <script src="https://cdn.jsdelivr.net/npm/three@0.148.0/examples/js/loaders/OBJLoader.js"></script>
-
 // Scene setup
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb); // light blue sky
-scene.fog = new THREE.Fog(0xaaccff, 500, 6000);
+scene.background = new THREE.Color(0x87ceeb);
 
 // Camera setup
 const camera = new THREE.PerspectiveCamera(
   70,
   window.innerWidth / window.innerHeight,
   0.1,
-  10000
+  1000
 );
-camera.position.set(0, 20, 30);
+camera.position.set(0, 10, 25);
 camera.lookAt(0, 0, 0);
 
-// Renderer setup
+// Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
-// Debug helpers
-const axesHelper = new THREE.AxesHelper(10);
-scene.add(axesHelper);
-
-const gridHelper = new THREE.GridHelper(200, 20);
-scene.add(gridHelper);
-
 // Lights
 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
 scene.add(ambientLight);
 
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-dirLight.position.set(20, 50, 10);
-dirLight.castShadow = true;
-scene.add(dirLight);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+directionalLight.position.set(50, 100, 50);
+directionalLight.castShadow = true;
+scene.add(directionalLight);
 
-// Ground plane
-const groundGeometry = new THREE.PlaneGeometry(200, 200, 50, 50);
-groundGeometry.rotateX(-Math.PI / 2);
-
-// Add simple waves to the ground height
-const positions = groundGeometry.attributes.position;
-for (let i = 0; i < positions.count; i++) {
-  const x = positions.getX(i);
-  const z = positions.getZ(i);
-  const height = Math.sin(x * 0.1) * 2 + Math.cos(z * 0.1) * 2;
-  positions.setY(i, height);
-}
-groundGeometry.computeVertexNormals();
-
-const groundMaterial = new THREE.MeshStandardMaterial({
-  color: 0x228b22,
-  roughness: 1,
-});
-const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-ground.receiveShadow = true;
-scene.add(ground);
-
-// Placeholder car (red box) until model loads
-const placeholderCar = new THREE.Mesh(
-  new THREE.BoxGeometry(2, 1, 4),
-  new THREE.MeshStandardMaterial({ color: 0xff0000 })
-);
-placeholderCar.position.y = 0.5;
-scene.add(placeholderCar);
-
-// Load your car.obj model
-let car = null;
+// Loaders
 const objLoader = new THREE.OBJLoader();
 
-objLoader.load(
-  'car.obj',
-  (object) => {
-    console.log('Car model loaded:', object);
+const assetsPath = 'assets/';
 
-    // Remove placeholder
-    scene.remove(placeholderCar);
+let car = null;
+let roadSegments = [];
+let grassPatches = [];
 
-    car = object;
-    car.scale.set(2, 2, 2);
+function loadGrass() {
+  return new Promise((resolve, reject) => {
+    objLoader.load(
+      assetsPath + 'grass.obj',
+      (obj) => {
+        resolve(obj);
+      },
+      undefined,
+      (err) => reject(err)
+    );
+  });
+}
 
-    // Apply simple red material to all meshes in car model
-    car.traverse((child) => {
+function loadRoad() {
+  return new Promise((resolve, reject) => {
+    objLoader.load(
+      assetsPath + 'road.obj',
+      (obj) => {
+        resolve(obj);
+      },
+      undefined,
+      (err) => reject(err)
+    );
+  });
+}
+
+function loadCar() {
+  return new Promise((resolve, reject) => {
+    objLoader.load(
+      assetsPath + 'car.obj',
+      (obj) => {
+        resolve(obj);
+      },
+      undefined,
+      (err) => reject(err)
+    );
+  });
+}
+
+// Create large grass ground by tiling grass patches
+async function createGrassField() {
+  const grassPatch = await loadGrass();
+
+  // Assume grass patch size approx 10x10 units
+  const patchSize = 10;
+
+  for (let i = -5; i < 5; i++) {
+    for (let j = -5; j < 5; j++) {
+      const patchClone = grassPatch.clone();
+      patchClone.position.set(i * patchSize, 0, j * patchSize);
+      patchClone.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = false;
+          child.receiveShadow = true;
+          child.material = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+        }
+      });
+      scene.add(patchClone);
+      grassPatches.push(patchClone);
+    }
+  }
+}
+
+// Create a long road by cloning road segments in a line
+async function createRoad() {
+  const roadSegment = await loadRoad();
+
+  // Assume road segment approx 5 wide x 20 long units
+  const segmentLength = 20;
+
+  for (let i = 0; i < 15; i++) {
+    const segClone = roadSegment.clone();
+    segClone.position.set(0, 0.01, i * segmentLength); // slight y offset so it’s above grass
+    segClone.traverse((child) => {
       if (child.isMesh) {
-        child.castShadow = true;
+        child.castShadow = false;
         child.receiveShadow = true;
-        child.material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+        child.material = new THREE.MeshStandardMaterial({ color: 0x333333 }); // asphalt dark gray
       }
     });
-
-    car.position.y = 5; // raise car above ground
-    scene.add(car);
-  },
-  undefined,
-  (error) => {
-    console.error('Error loading car.obj:', error);
+    scene.add(segClone);
+    roadSegments.push(segClone);
   }
-);
+}
+
+// Load and add car model
+async function createCar() {
+  car = await loadCar();
+  car.scale.set(2, 2, 2);
+  car.position.set(0, 0.5, 0);
+  car.rotation.y = Math.PI; // face forward along positive z
+  car.traverse((child) => {
+    if (child.isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+      child.material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    }
+  });
+  scene.add(car);
+}
 
 // Controls
 const keys = {};
@@ -120,11 +153,7 @@ const friction = 0.95;
 const turnSpeed = 0.03;
 
 function updateCar() {
-  if (!car) {
-    // Rotate placeholder car for fun while waiting
-    placeholderCar.rotation.y += 0.01;
-    return;
-  }
+  if (!car) return;
 
   if (keys['w']) speed += accel;
   if (keys['s']) speed -= accel;
@@ -148,7 +177,6 @@ function updateCamera() {
     camera.lookAt(0, 0, 0);
     return;
   }
-
   const desiredPos = camOffset.clone().applyMatrix4(car.matrixWorld);
   camera.position.lerp(desiredPos, 0.1);
   camera.lookAt(car.position);
@@ -157,19 +185,28 @@ function updateCamera() {
 // Main animation loop
 function animate() {
   requestAnimationFrame(animate);
-
   updateCar();
   updateCamera();
-
   renderer.render(scene, camera);
 }
 
-animate();
+// Initialize scene by loading everything
+async function init() {
+  try {
+    await createGrassField();
+    await createRoad();
+    await createCar();
+    animate();
+  } catch (e) {
+    console.error('Error loading assets:', e);
+  }
+}
 
-// Handle window resize
+init();
+
+// Resize handler
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
