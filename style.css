@@ -1,16 +1,16 @@
-/* Make sure canvas fills entire screen with no margin */
-body, html {
+/* Full screen canvas with no scroll */
+html, body {
   margin: 0;
   padding: 0;
   overflow: hidden;
   height: 100%;
-  background-color: #87ceeb; /* match the sky color in JS */
+  background-color: #87ceeb; /* sky color */
 }
 
 canvas {
-  display: block; /* remove inline spacing */
+  display: block;
   width: 100%;
   height: 100%;
-  touch-action: none; /* prevent touch scroll on mobile */
   user-select: none;
+  touch-action: none;
 }
