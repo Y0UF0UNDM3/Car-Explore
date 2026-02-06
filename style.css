@@ -1,18 +1,16 @@
-body {
+/* Make sure canvas fills entire screen with no margin */
+body, html {
   margin: 0;
+  padding: 0;
   overflow: hidden;
-  background-color: #87ceeb; /* sky blue */
-  font-family: Arial, sans-serif;
+  height: 100%;
+  background-color: #87ceeb; /* match the sky color in JS */
 }
 
-#ui {
-  position: fixed;
-  top: 10px;
-  left: 10px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.6);
-  padding: 10px 14px;
-  border-radius: 8px;
+canvas {
+  display: block; /* remove inline spacing */
+  width: 100%;
+  height: 100%;
+  touch-action: none; /* prevent touch scroll on mobile */
   user-select: none;
-  z-index: 10;
 }
