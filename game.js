@@ -36,24 +36,32 @@ ground.receiveShadow = true;
 scene.add(ground);
 
 // Loaders
+const mtlLoader = new THREE.MTLLoader();
 const objLoader = new THREE.OBJLoader();
 const assetsPath = 'assets/';
 
 let roadSegments = [];
 
-// Load road.obj
 function loadRoad() {
   return new Promise((resolve, reject) => {
-    objLoader.load(
-      assetsPath + 'road.obj',
-      (obj) => resolve(obj),
+    mtlLoader.load(
+      assetsPath + 'road.mtl',
+      (materials) => {
+        materials.preload();
+        objLoader.setMaterials(materials);
+        objLoader.load(
+          assetsPath + 'road.obj',
+          (obj) => resolve(obj),
+          undefined,
+          (err) => reject(err)
+        );
+      },
       undefined,
       (err) => reject(err)
     );
   });
 }
 
-// Create long road by tiling road.obj segments
 async function createRoad() {
   const roadSegment = await loadRoad();
 
@@ -62,12 +70,10 @@ async function createRoad() {
   for (let i = 0; i < 15; i++) {
     const segClone = roadSegment.clone();
     segClone.position.set(0, 0.01, i * segmentLength); // slightly above ground
-
     segClone.traverse((child) => {
       if (child.isMesh) {
         child.castShadow = false;
         child.receiveShadow = true;
-        child.material = new THREE.MeshStandardMaterial({ color: 0x333333 });
       }
     });
 
