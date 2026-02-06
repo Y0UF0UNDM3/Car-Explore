@@ -1,168 +1,209 @@
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xbfd1e5);
-scene.fog = new THREE.Fog(0xbfd1e5, 300, 4000);
+export function startGame(THREE, GLTFLoader, Sky, CANNON) {
 
-// Camera
+// ================= SCENE =================
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xaaccff, 500, 6000);
+
 const camera = new THREE.PerspectiveCamera(
-  70,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  8000
+  70, innerWidth/innerHeight, 0.1, 10000
 );
 
-// Renderer
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
 document.body.appendChild(renderer.domElement);
 
-// Lights
-const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-sun.position.set(200, 400, 200);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-scene.add(sun);
+// ================= SKY =================
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+const sky = new Sky();
+sky.scale.setScalar(10000);
+scene.add(sky);
 
-// ===== REAL TERRAIN =====
-const size = 5000;
-const segments = 256;
+sky.material.uniforms.turbidity.value = 8;
+sky.material.uniforms.rayleigh.value = 2;
+sky.material.uniforms.mieCoefficient.value = 0.005;
+sky.material.uniforms.mieDirectionalG.value = 0.8;
 
-const geo = new THREE.PlaneGeometry(size, size, segments, segments);
-geo.rotateX(-Math.PI / 2);
+const sun = new THREE.Vector3();
+sun.setFromSphericalCoords(1, Math.PI/3, Math.PI/4);
+sky.material.uniforms.sunPosition.value.copy(sun);
 
-const pos = geo.attributes.position;
+// ================= LIGHT =================
 
-for (let i = 0; i < pos.count; i++) {
-  const x = pos.getX(i);
-  const z = pos.getZ(i);
+const light = new THREE.DirectionalLight(0xffffff, 1.3);
+light.position.set(300,400,200);
+light.castShadow = true;
+light.shadow.mapSize.set(2048,2048);
+scene.add(light);
 
-  const h =
-    Math.sin(x * 0.002) * 20 +
-    Math.cos(z * 0.002) * 20 +
-    Math.sin((x + z) * 0.001) * 30;
+scene.add(new THREE.AmbientLight(0xffffff,0.25));
 
-  pos.setY(i, h);
+// ================= PHYSICS =================
+
+const world = new CANNON.World({
+  gravity: new CANNON.Vec3(0,-9.82,0)
+});
+
+// ===== TERRAIN HEIGHTFIELD =====
+
+const size = 256;
+const matrix = [];
+
+for(let i=0;i<size;i++){
+  matrix.push([]);
+  for(let j=0;j<size;j++){
+    const h =
+      Math.sin(i*0.15)*4 +
+      Math.cos(j*0.18)*4 +
+      Math.sin((i+j)*0.1)*6;
+    matrix[i].push(h);
+  }
 }
 
+const hfShape = new CANNON.Heightfield(matrix,{ elementSize:4 });
+const hfBody = new CANNON.Body({ mass:0 });
+hfBody.addShape(hfShape);
+hfBody.position.set(-size*2,0,size*2);
+hfBody.quaternion.setFromEuler(-Math.PI/2,0,0);
+world.addBody(hfBody);
+
+// visual terrain
+const geo = new THREE.PlaneGeometry(size*4,size*4,size-1,size-1);
+geo.rotateX(-Math.PI/2);
+
+const verts = geo.attributes.position;
+for(let i=0;i<verts.count;i++){
+  const x = Math.floor(i % size);
+  const y = Math.floor(i / size);
+  verts.setY(i, matrix[x][y]);
+}
 geo.computeVertexNormals();
 
 const ground = new THREE.Mesh(
   geo,
-  new THREE.MeshStandardMaterial({
-    color: 0x3f7c47,
-    roughness: 1
-  })
+  new THREE.MeshStandardMaterial({ color:0x4c7a3f, roughness:1 })
 );
-
 ground.receiveShadow = true;
 scene.add(ground);
 
-// ===== LOAD REAL CAR MODEL =====
-// Put a file named car.glb in your repo root
-let car;
-const loader = new THREE.GLTFLoader();
+// ================= VEHICLE =================
 
-loader.load(
-  "car.glb",
-  gltf => {
-    car = gltf.scene;
-    car.scale.set(2, 2, 2);
-    car.traverse(o => {
-      if (o.isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
-      }
-    });
-    scene.add(car);
-  },
-  undefined,
-  err => console.log("Model load failed — using fallback car")
-);
+const chassisShape = new CANNON.Box(new CANNON.Vec3(1,0.5,2));
+const chassisBody = new CANNON.Body({ mass:1200 });
+chassisBody.addShape(chassisShape);
+chassisBody.position.set(0,20,0);
+world.addBody(chassisBody);
 
-// Fallback car if model missing
-const fallback = new THREE.Mesh(
-  new THREE.BoxGeometry(2, 1, 4),
-  new THREE.MeshStandardMaterial({ color: 0xcc0000 })
-);
-fallback.castShadow = true;
-scene.add(fallback);
-
-// ===== TREES =====
-const treeGeo = new THREE.ConeGeometry(2, 8, 8);
-const treeMat = new THREE.MeshStandardMaterial({ color: 0x2e5e2e });
-
-for (let i = 0; i < 200; i++) {
-  const t = new THREE.Mesh(treeGeo, treeMat);
-  t.position.set(
-    (Math.random() - 0.5) * 4000,
-    4,
-    (Math.random() - 0.5) * 4000
-  );
-  t.castShadow = true;
-  scene.add(t);
-}
-
-// ===== CONTROLS + PHYSICS =====
-let speed = 0;
-let accel = 0.03;
-let maxSpeed = 3.5;
-let friction = 0.985;
-let turn = 0;
-
-const keys = {};
-addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
-
-function getCarObj() {
-  return car || fallback;
-}
-
-function updateCar() {
-  const obj = getCarObj();
-
-  if (keys["w"]) speed += accel;
-  if (keys["s"]) speed -= accel;
-  if (keys[" "]) speed *= 0.9;
-
-  speed = Math.max(-maxSpeed, Math.min(maxSpeed, speed));
-  speed *= friction;
-
-  if (keys["a"]) turn += 0.02 * speed;
-  if (keys["d"]) turn -= 0.02 * speed;
-
-  obj.rotation.y += turn;
-  turn *= 0.8;
-
-  obj.translateZ(speed);
-}
-
-// ===== CAMERA FOLLOW =====
-const camOffset = new THREE.Vector3(0, 8, -16);
-
-function updateCamera() {
-  const obj = getCarObj();
-  const desired = camOffset.clone().applyMatrix4(obj.matrixWorld);
-  camera.position.lerp(desired, 0.08);
-  camera.lookAt(obj.position);
-}
-
-camera.position.set(0, 10, -20);
-
-// Resize
-addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+const vehicle = new CANNON.RaycastVehicle({
+  chassisBody
 });
 
-// Loop
-function animate() {
+const wheelOptions = {
+  radius:0.4,
+  suspensionStiffness:30,
+  suspensionRestLength:0.5,
+  frictionSlip:5,
+  dampingRelaxation:2.3,
+  dampingCompression:4.4,
+  maxSuspensionForce:100000,
+  rollInfluence:0.01,
+  axleLocal: new CANNON.Vec3(-1,0,0),
+  directionLocal: new CANNON.Vec3(0,-1,0)
+};
+
+vehicle.addWheel({...wheelOptions, chassisConnectionPointLocal:new CANNON.Vec3(1,0,1.6)});
+vehicle.addWheel({...wheelOptions, chassisConnectionPointLocal:new CANNON.Vec3(-1,0,1.6)});
+vehicle.addWheel({...wheelOptions, chassisConnectionPointLocal:new CANNON.Vec3(1,0,-1.6)});
+vehicle.addWheel({...wheelOptions, chassisConnectionPointLocal:new CANNON.Vec3(-1,0,-1.6)});
+
+vehicle.addToWorld(world);
+
+// ================= CAR MODEL =================
+
+let carMesh;
+new GLTFLoader().load("car.glb", gltf=>{
+  carMesh = gltf.scene;
+  carMesh.scale.set(2,2,2);
+  carMesh.traverse(o=>{
+    if(o.isMesh){ o.castShadow=true; }
+  });
+  scene.add(carMesh);
+});
+
+// ================= INPUT =================
+
+const keys={};
+addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
+addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+
+// ================= CONTROLS =================
+
+function updateControls(){
+  const engine = 2500;
+  const steer = 0.5;
+
+  vehicle.applyEngineForce(
+    keys["w"] ? -engine : keys["s"] ? engine : 0, 2
+  );
+  vehicle.applyEngineForce(
+    keys["w"] ? -engine : keys["s"] ? engine : 0, 3
+  );
+
+  vehicle.setSteeringValue(keys["a"]?steer:keys["d"]?-steer:0,0);
+  vehicle.setSteeringValue(keys["a"]?steer:keys["d"]?-steer:0,1);
+
+  const brake = keys[" "] ? 50 : 0;
+  for(let i=0;i<4;i++) vehicle.setBrake(brake,i);
+
+  if(keys["r"]){
+    chassisBody.position.set(0,20,0);
+    chassisBody.velocity.setZero();
+  }
+}
+
+// ================= CAMERA RIG =================
+
+function updateCamera(){
+  const p = chassisBody.position;
+  const q = chassisBody.quaternion;
+
+  const back = new THREE.Vector3(0,4,-12).applyQuaternion(
+    new THREE.Quaternion(q.x,q.y,q.z,q.w)
+  );
+
+  camera.position.lerp(
+    new THREE.Vector3(p.x,p.y,p.z).add(back),
+    0.1
+  );
+  camera.lookAt(p.x,p.y+1,p.z);
+}
+
+// ================= LOOP =================
+
+function animate(){
   requestAnimationFrame(animate);
-  updateCar();
+  updateControls();
+  world.step(1/60);
+
+  if(carMesh){
+    carMesh.position.copy(chassisBody.position);
+    carMesh.quaternion.copy(chassisBody.quaternion);
+  }
+
   updateCamera();
-  renderer.render(scene, camera);
+  renderer.render(scene,camera);
 }
 
 animate();
+
+// resize
+addEventListener("resize",()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+}
