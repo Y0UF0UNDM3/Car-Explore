@@ -1,15 +1,22 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Open World Car Game</title>
+  <title>Realistic Web Car</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="ui">WASD drive • Space brake</div>
+<div id="ui">WASD drive • Space brake • R reset</div>
 
-  <script src="https://cdn.jsdelivr.net/npm/three@0.160/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.160/examples/js/loaders/GLTFLoader.js"></script>
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.js";
+import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/loaders/GLTFLoader.js";
+import { Sky } from "https://cdn.jsdelivr.net/npm/three@0.160/examples/jsm/objects/Sky.js";
+import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js";
 
-  <script src="game.js"></script>
+import { startGame } from "./game.js";
+
+startGame(THREE, GLTFLoader, Sky, CANNON);
+</script>
+
 </body>
 </html>
