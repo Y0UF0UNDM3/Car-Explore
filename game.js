@@ -1,8 +1,7 @@
-// Scene setup
+// Basic Three.js scene setup
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
-// Camera setup
 const camera = new THREE.PerspectiveCamera(
   70,
   window.innerWidth / window.innerHeight,
@@ -12,7 +11,6 @@ const camera = new THREE.PerspectiveCamera(
 camera.position.set(0, 10, 25);
 camera.lookAt(0, 0, 0);
 
-// Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
@@ -27,115 +25,30 @@ directionalLight.position.set(50, 100, 50);
 directionalLight.castShadow = true;
 scene.add(directionalLight);
 
-// Loaders
-const objLoader = new THREE.OBJLoader();
+// Add simple green ground plane (100x100 units)
+const groundGeometry = new THREE.PlaneGeometry(100, 100);
+const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
 
-const assetsPath = 'assets/';
+// Add simple gray road as box (5 wide, 44 long, 0.2 high)
+const roadGeometry = new THREE.BoxGeometry(5, 0.2, 44);
+const roadMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+const road = new THREE.Mesh(roadGeometry, roadMaterial);
+road.position.set(0, 0.11, 22); // slightly above ground to avoid z-fighting
+road.receiveShadow = true;
+scene.add(road);
 
-let car = null;
-let roadSegments = [];
-let grassPatches = [];
-
-function loadGrass() {
-  return new Promise((resolve, reject) => {
-    objLoader.load(
-      assetsPath + 'grass.obj',
-      (obj) => {
-        resolve(obj);
-      },
-      undefined,
-      (err) => reject(err)
-    );
-  });
-}
-
-function loadRoad() {
-  return new Promise((resolve, reject) => {
-    objLoader.load(
-      assetsPath + 'road.obj',
-      (obj) => {
-        resolve(obj);
-      },
-      undefined,
-      (err) => reject(err)
-    );
-  });
-}
-
-function loadCar() {
-  return new Promise((resolve, reject) => {
-    objLoader.load(
-      assetsPath + 'car.obj',
-      (obj) => {
-        resolve(obj);
-      },
-      undefined,
-      (err) => reject(err)
-    );
-  });
-}
-
-// Create large grass ground by tiling grass patches
-async function createGrassField() {
-  const grassPatch = await loadGrass();
-
-  // Assume grass patch size approx 10x10 units
-  const patchSize = 10;
-
-  for (let i = -5; i < 5; i++) {
-    for (let j = -5; j < 5; j++) {
-      const patchClone = grassPatch.clone();
-      patchClone.position.set(i * patchSize, 0, j * patchSize);
-      patchClone.traverse((child) => {
-        if (child.isMesh) {
-          child.castShadow = false;
-          child.receiveShadow = true;
-          child.material = new THREE.MeshStandardMaterial({ color: 0x228b22 });
-        }
-      });
-      scene.add(patchClone);
-      grassPatches.push(patchClone);
-    }
-  }
-}
-
-// Create a long road by cloning road segments in a line
-async function createRoad() {
-  const roadSegment = await loadRoad();
-
-  // Assume road segment approx 5 wide x 20 long units
-  const segmentLength = 20;
-
-  for (let i = 0; i < 15; i++) {
-    const segClone = roadSegment.clone();
-    segClone.position.set(0, 0.01, i * segmentLength); // slight y offset so it’s above grass
-    segClone.traverse((child) => {
-      if (child.isMesh) {
-        child.castShadow = false;
-        child.receiveShadow = true;
-        child.material = new THREE.MeshStandardMaterial({ color: 0x333333 }); // asphalt dark gray
-      }
-    });
-    scene.add(segClone);
-    roadSegments.push(segClone);
-  }
-}
-
-// Load and add car model
-async function createCar() {
-  car = await loadCar();
-  car.scale.set(2, 2, 2);
-  car.position.set(0, 0.5, 0);
-  car.rotation.y = Math.PI; // face forward along positive z
-  car.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-      child.material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-    }
-  });
-  scene.add(car);
-}
+// Add red cube as temporary car (2x1x4 units)
+const carGeometry = new THREE.BoxGeometry(2, 1, 4);
+const carMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+const car = new THREE.Mesh(carGeometry, carMaterial);
+car.position.set(0, 0.5, 0);
+car.castShadow = true;
+car.receiveShadow = true;
+scene.add(car);
 
 // Controls
 const keys = {};
@@ -172,17 +85,12 @@ function updateCar() {
 const camOffset = new THREE.Vector3(0, 6, -12);
 
 function updateCamera() {
-  if (!car) {
-    camera.position.set(0, 20, 30);
-    camera.lookAt(0, 0, 0);
-    return;
-  }
   const desiredPos = camOffset.clone().applyMatrix4(car.matrixWorld);
   camera.position.lerp(desiredPos, 0.1);
   camera.lookAt(car.position);
 }
 
-// Main animation loop
+// Animation loop
 function animate() {
   requestAnimationFrame(animate);
   updateCar();
@@ -190,19 +98,7 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-// Initialize scene by loading everything
-async function init() {
-  try {
-    await createGrassField();
-    await createRoad();
-    await createCar();
-    animate();
-  } catch (e) {
-    console.error('Error loading assets:', e);
-  }
-}
-
-init();
+animate();
 
 // Resize handler
 window.addEventListener('resize', () => {
