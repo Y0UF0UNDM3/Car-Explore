@@ -1,117 +1,154 @@
-// Scene
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0xa0a0a0, 200, 2000);
+scene.background = new THREE.Color(0xbfd1e5);
+scene.fog = new THREE.Fog(0xbfd1e5, 300, 4000);
 
 // Camera
 const camera = new THREE.PerspectiveCamera(
-  75,
+  70,
   window.innerWidth / window.innerHeight,
   0.1,
-  5000
+  8000
 );
 
 // Renderer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
 // Lights
-const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
-scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+sun.position.set(200, 400, 200);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+scene.add(sun);
 
-const dir = new THREE.DirectionalLight(0xffffff, 1);
-dir.position.set(50, 100, 50);
-scene.add(dir);
+scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 
-// Ground (open world feel)
-const groundGeo = new THREE.PlaneGeometry(5000, 5000, 100, 100);
-groundGeo.rotateX(-Math.PI / 2);
+// ===== REAL TERRAIN =====
+const size = 5000;
+const segments = 256;
 
-for (let v of groundGeo.attributes.position.array) {
-  // slight noise
+const geo = new THREE.PlaneGeometry(size, size, segments, segments);
+geo.rotateX(-Math.PI / 2);
+
+const pos = geo.attributes.position;
+
+for (let i = 0; i < pos.count; i++) {
+  const x = pos.getX(i);
+  const z = pos.getZ(i);
+
+  const h =
+    Math.sin(x * 0.002) * 20 +
+    Math.cos(z * 0.002) * 20 +
+    Math.sin((x + z) * 0.001) * 30;
+
+  pos.setY(i, h);
 }
 
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x3a7a3a });
-const ground = new THREE.Mesh(groundGeo, groundMat);
+geo.computeVertexNormals();
+
+const ground = new THREE.Mesh(
+  geo,
+  new THREE.MeshStandardMaterial({
+    color: 0x3f7c47,
+    roughness: 1
+  })
+);
+
+ground.receiveShadow = true;
 scene.add(ground);
 
-// Car body
-const car = new THREE.Group();
+// ===== LOAD REAL CAR MODEL =====
+// Put a file named car.glb in your repo root
+let car;
+const loader = new THREE.GLTFLoader();
 
-const body = new THREE.Mesh(
-  new THREE.BoxGeometry(2, 0.8, 4),
-  new THREE.MeshStandardMaterial({ color: 0xff3333 })
+loader.load(
+  "car.glb",
+  gltf => {
+    car = gltf.scene;
+    car.scale.set(2, 2, 2);
+    car.traverse(o => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
+    });
+    scene.add(car);
+  },
+  undefined,
+  err => console.log("Model load failed — using fallback car")
 );
-body.position.y = 1;
-car.add(body);
 
-// Wheels
-function makeWheel(x, z) {
-  const w = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.4, 0.4, 0.5, 24),
-    new THREE.MeshStandardMaterial({ color: 0x222222 })
-  );
-  w.rotation.z = Math.PI / 2;
-  w.position.set(x, 0.4, z);
-  return w;
-}
+// Fallback car if model missing
+const fallback = new THREE.Mesh(
+  new THREE.BoxGeometry(2, 1, 4),
+  new THREE.MeshStandardMaterial({ color: 0xcc0000 })
+);
+fallback.castShadow = true;
+scene.add(fallback);
 
-car.add(makeWheel(-1, 1.5));
-car.add(makeWheel(1, 1.5));
-car.add(makeWheel(-1, -1.5));
-car.add(makeWheel(1, -1.5));
+// ===== TREES =====
+const treeGeo = new THREE.ConeGeometry(2, 8, 8);
+const treeMat = new THREE.MeshStandardMaterial({ color: 0x2e5e2e });
 
-scene.add(car);
-
-// Trees scattered
-const treeGeo = new THREE.ConeGeometry(1, 4, 8);
-const treeMat = new THREE.MeshStandardMaterial({ color: 0x2f5f2f });
-
-for (let i = 0; i < 300; i++) {
+for (let i = 0; i < 200; i++) {
   const t = new THREE.Mesh(treeGeo, treeMat);
   t.position.set(
     (Math.random() - 0.5) * 4000,
-    2,
+    4,
     (Math.random() - 0.5) * 4000
   );
+  t.castShadow = true;
   scene.add(t);
 }
 
-// Controls + physics
+// ===== CONTROLS + PHYSICS =====
 let speed = 0;
-let accel = 0.02;
-let maxSpeed = 2.5;
-let friction = 0.98;
-let turnRate = 0.03;
+let accel = 0.03;
+let maxSpeed = 3.5;
+let friction = 0.985;
+let turn = 0;
 
 const keys = {};
 addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
 addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
-// Camera follow offset
-const camOffset = new THREE.Vector3(0, 6, -12);
+function getCarObj() {
+  return car || fallback;
+}
 
 function updateCar() {
+  const obj = getCarObj();
+
   if (keys["w"]) speed += accel;
   if (keys["s"]) speed -= accel;
   if (keys[" "]) speed *= 0.9;
 
-  speed = THREE.MathUtils.clamp(speed, -maxSpeed, maxSpeed);
+  speed = Math.max(-maxSpeed, Math.min(maxSpeed, speed));
   speed *= friction;
 
-  if (keys["a"]) car.rotation.y += turnRate * speed * 2;
-  if (keys["d"]) car.rotation.y -= turnRate * speed * 2;
+  if (keys["a"]) turn += 0.02 * speed;
+  if (keys["d"]) turn -= 0.02 * speed;
 
-  car.translateZ(speed);
+  obj.rotation.y += turn;
+  turn *= 0.8;
+
+  obj.translateZ(speed);
 }
+
+// ===== CAMERA FOLLOW =====
+const camOffset = new THREE.Vector3(0, 8, -16);
 
 function updateCamera() {
-  const desired = camOffset.clone().applyMatrix4(car.matrixWorld);
-  camera.position.lerp(desired, 0.1);
-  camera.lookAt(car.position);
+  const obj = getCarObj();
+  const desired = camOffset.clone().applyMatrix4(obj.matrixWorld);
+  camera.position.lerp(desired, 0.08);
+  camera.lookAt(obj.position);
 }
 
-camera.position.set(0, 8, -15);
+camera.position.set(0, 10, -20);
 
 // Resize
 addEventListener("resize", () => {
@@ -123,10 +160,8 @@ addEventListener("resize", () => {
 // Loop
 function animate() {
   requestAnimationFrame(animate);
-
   updateCar();
   updateCamera();
-
   renderer.render(scene, camera);
 }
 
