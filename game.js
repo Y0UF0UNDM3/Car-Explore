@@ -60,73 +60,35 @@ const ground = new THREE.Mesh(geometry, groundMaterial);
 ground.receiveShadow = true;
 scene.add(ground);
 
-// Car loading variables
+// Load car model OBJ only
 let car;
 
-// Load OBJ + MTL if available, else load OBJ alone
-const mtlLoader = new THREE.MTLLoader();
 const objLoader = new THREE.OBJLoader();
 
-function loadCarModel() {
-  mtlLoader.load(
-    'car.mtl',
-    (materials) => {
-      materials.preload();
-      objLoader.setMaterials(materials);
-      objLoader.load(
-        'car.obj',
-        (object) => {
-          setCar(object);
-          console.log('Car model loaded with MTL!');
-        },
-        undefined,
-        (error) => {
-          console.error('Error loading car.obj with MTL:', error);
-        }
-      );
-    },
-    undefined,
-    () => {
-      // No MTL, load OBJ only
-      objLoader.load(
-        'car.obj',
-        (object) => {
-          setCar(object);
-          console.log('Car model loaded without MTL!');
-        },
-        undefined,
-        (error) => {
-          console.error('Error loading car.obj:', error);
-        }
-      );
-    }
-  );
-}
+objLoader.load(
+  'car.obj',
+  (object) => {
+    car = object;
+    car.scale.set(2, 2, 2);
 
-function setCar(object) {
-  if (car) scene.remove(car);
-  car = object;
-  car.scale.set(2, 2, 2);
-  car.traverse((child) => {
-    if (child.isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
-    }
-  });
-  car.position.y = 5;
-  scene.add(car);
-}
+    // Apply basic material to all meshes
+    car.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        child.material = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+      }
+    });
 
-// Show placeholder red box until car loads
-const placeholderCar = new THREE.Mesh(
-  new THREE.BoxGeometry(2, 1, 4),
-  new THREE.MeshStandardMaterial({ color: 0xff0000 })
+    car.position.y = 5;
+    scene.add(car);
+    console.log('Car model loaded!');
+  },
+  undefined,
+  (error) => {
+    console.error('Error loading car.obj:', error);
+  }
 );
-placeholderCar.position.y = 0.5;
-scene.add(placeholderCar);
-
-// Start loading car
-loadCarModel();
 
 // Controls
 const keys = {};
@@ -144,11 +106,7 @@ const friction = 0.95;
 const turnSpeed = 0.03;
 
 function updateCar() {
-  if (!car) {
-    // Move placeholder for fun while loading
-    placeholderCar.rotation.y += 0.01;
-    return;
-  }
+  if (!car) return;
 
   if (keys['w']) speed += accel;
   if (keys['s']) speed -= accel;
@@ -168,7 +126,6 @@ const camOffset = new THREE.Vector3(0, 6, -12);
 
 function updateCamera() {
   if (!car) {
-    // Keep camera fixed while loading
     camera.position.set(0, 20, 30);
     camera.lookAt(0, 0, 0);
     return;
