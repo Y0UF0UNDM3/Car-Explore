@@ -15,6 +15,13 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
+// Add helpers for debugging
+const axesHelper = new THREE.AxesHelper(10);
+scene.add(axesHelper);
+
+const gridHelper = new THREE.GridHelper(200, 20);
+scene.add(gridHelper);
+
 // Lights
 const dirLight = new THREE.DirectionalLight(0xffffff, 1.3);
 dirLight.position.set(300, 400, 200);
@@ -52,8 +59,15 @@ const ground = new THREE.Mesh(geometry, groundMaterial);
 ground.receiveShadow = true;
 scene.add(ground);
 
+// Car placeholder box (red), in case model fails to load
+let car = new THREE.Mesh(
+  new THREE.BoxGeometry(2, 1, 4),
+  new THREE.MeshStandardMaterial({ color: 0xff0000 })
+);
+car.position.y = 0.5;
+scene.add(car);
+
 // Load car model (OBJ + MTL optional)
-let car;
 const mtlLoader = new THREE.MTLLoader();
 const objLoader = new THREE.OBJLoader();
 
@@ -65,6 +79,8 @@ mtlLoader.load(
     objLoader.load(
       'car.obj',
       (object) => {
+        console.log("Car model loaded!");
+        scene.remove(car); // remove placeholder
         car = object;
         car.scale.set(2, 2, 2);
         car.traverse((child) => {
@@ -84,10 +100,12 @@ mtlLoader.load(
   },
   undefined,
   () => {
-    // If no MTL file found, load OBJ without materials
+    // If no MTL file, load OBJ without materials
     objLoader.load(
       'car.obj',
       (object) => {
+        console.log("Car model loaded without MTL!");
+        scene.remove(car); // remove placeholder
         car = object;
         car.scale.set(2, 2, 2);
         car.traverse((child) => {
